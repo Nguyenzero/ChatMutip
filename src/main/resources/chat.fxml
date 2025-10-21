@@ -8,49 +8,61 @@
 <BorderPane xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
             fx:controller="ChatClientController" prefHeight="600.0" prefWidth="800.0">
 
-    <!-- Header - Connection Panel -->
+    <!-- Header -->
     <top>
         <VBox spacing="10" style="-fx-background-color: #2196F3; -fx-padding: 15;">
-            <Label text="Chat Room Client - VKU" textFill="WHITE">
+            <Label text="💬 Chat Room Client - VKU" textFill="WHITE">
                 <font>
                     <Font name="System Bold" size="20.0" />
                 </font>
             </Label>
 
+            <!-- Kết nối -->
             <HBox spacing="10" alignment="CENTER_LEFT">
-                <Label text="Server IP:" textFill="WHITE" prefWidth="80"/>
-                <TextField fx:id="txtServerIP" prefWidth="150" promptText="127.0.0.1"/>
+                <Label text="Server:" textFill="WHITE"/>
+                <TextField fx:id="txtServerIP" prefWidth="120" promptText="127.0.0.1"/>
 
-                <Label text="Port:" textFill="WHITE" prefWidth="50"/>
-                <TextField fx:id="txtPort" prefWidth="100" promptText="12345"/>
+                <Label text="Port:" textFill="WHITE"/>
+                <TextField fx:id="txtPort" prefWidth="70" promptText="1111"/>
 
-                <Label text="Tên:" textFill="WHITE" prefWidth="50"/>
-                <TextField fx:id="txtUsername" prefWidth="150" promptText="Tên của bạn"/>
+                <Label text="Tên:" textFill="WHITE"/>
+                <TextField fx:id="txtUsername" prefWidth="120" promptText="Tên của bạn"/>
 
                 <Button fx:id="btnConnect" text="Kết nối" onAction="#handleConnect"
                         style="-fx-background-color: #4CAF50; -fx-text-fill: white; -fx-font-weight: bold;"/>
-                <Button fx:id="btnDisconnect" text="Ngắt kết nối" onAction="#handleDisconnect"
+                <Button fx:id="btnDisconnect" text="Ngắt" onAction="#handleDisconnect"
                         style="-fx-background-color: #f44336; -fx-text-fill: white; -fx-font-weight: bold;"/>
+            </HBox>
+
+            <!-- Quản lý phòng -->
+            <HBox spacing="10" alignment="CENTER_LEFT">
+                <Label text="Phòng:" textFill="WHITE"/>
+                <ChoiceBox fx:id="choiceGroup" prefWidth="120"/>
+                <Button fx:id="btnJoin" text="Tham gia" onAction="#handleJoinGroup"
+                        style="-fx-background-color: #FF9800; -fx-text-fill: white; -fx-font-weight: bold;"/>
+                <Button fx:id="btnLeave" text="Rời phòng" onAction="#handleLeaveGroup"
+                        style="-fx-background-color: #9C27B0; -fx-text-fill: white; -fx-font-weight: bold;"/>
+                <Label fx:id="lblCurrentGroup" text="Chưa vào phòng" textFill="WHITE" style="-fx-font-weight: bold;"/>
             </HBox>
         </VBox>
     </top>
 
-    <!-- Center - Chat Area -->
+    <!-- Center -->
     <center>
         <VBox spacing="10" style="-fx-padding: 10;">
             <Label text="Khung chat:">
                 <font>
-                    <Font name="System Bold" size="14.0" />
+                    <Font name="System Bold" size="14.0"/>
                 </font>
             </Label>
 
-            <TextArea fx:id="txtChatArea" VBox.vgrow="ALWAYS" wrapText="true"
-                      editable="false"
+            <TextArea fx:id="txtChatArea" wrapText="true" editable="false"
+                      VBox.vgrow="ALWAYS"
                       style="-fx-font-size: 13px; -fx-control-inner-background: #f5f5f5;"/>
 
-            <HBox spacing="10" alignment="CENTER_LEFT">
-                <TextField fx:id="txtMessage" HBox.hgrow="ALWAYS"
-                           promptText="Nhập tin nhắn..." onAction="#handleSend"/>
+            <HBox spacing="10">
+                <TextField fx:id="txtMessage" promptText="Nhập tin nhắn..." HBox.hgrow="ALWAYS"
+                           onAction="#handleSend"/>
                 <Button fx:id="btnSend" text="Gửi" onAction="#handleSend"
                         style="-fx-background-color: #2196F3; -fx-text-fill: white; -fx-font-weight: bold;"
                         prefWidth="80"/>
@@ -58,13 +70,12 @@
         </VBox>
     </center>
 
-    <!-- Right - Online Users List -->
+    <!-- Danh sách người dùng -->
     <right>
-        <VBox spacing="10" style="-fx-padding: 10; -fx-background-color: #f0f0f0;"
-              prefWidth="200">
-            <Label text="Người dùng online:">
+        <VBox spacing="10" style="-fx-padding: 10; -fx-background-color: #f0f0f0;" prefWidth="200">
+            <Label text="👥 Người dùng online:">
                 <font>
-                    <Font name="System Bold" size="14.0" />
+                    <Font name="System Bold" size="14.0"/>
                 </font>
             </Label>
             <ListView fx:id="listOnlineUsers" VBox.vgrow="ALWAYS">

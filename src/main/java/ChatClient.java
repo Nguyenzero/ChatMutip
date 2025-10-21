@@ -13,7 +13,9 @@ public class ChatClient {
         socket = new Socket(serverIP, port);
         in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
         out = new PrintWriter(socket.getOutputStream(), true);
-        out.println(username); // Gửi tên người dùng khi mới kết nối
+
+        out.println(username);
+        out.println("null"); // bắt đầu ở Lobby
 
         Thread listener = new Thread(() -> {
             try {
