@@ -5,220 +5,192 @@ import java.util.concurrent.*;
 
 public class ChatServer {
     private static final int PORT = 1111;
-    private static final Map<String, ClientHandler> clients = new ConcurrentHashMap<>();
-    private static final Map<String, Set<ClientHandler>> groups = new ConcurrentHashMap<>();
+    private static Map<String, ClientHandler> clients = new ConcurrentHashMap<>();
+    private static Map<String, Set<String>> groups = new ConcurrentHashMap<>();
 
     public static void main(String[] args) {
-        try (ServerSocket serverSocket = new ServerSocket(PORT)) {
-            System.out.println("🔵 Server đang chạy tại: " + InetAddress.getLocalHost().getHostAddress() + ":" + PORT);
+        try {
+            String localIP = getLocalIPv4Address();
+            if (localIP == null) {
+                System.out.println("⚠️ Không tìm thấy địa chỉ IPv4 Wi-Fi, dùng localhost (127.0.0.1)");
+                localIP = "127.0.0.1";
+            }
+
+            ServerSocket serverSocket = new ServerSocket(PORT);
+            System.out.println("🌐 Server đang chạy tại: " + localIP + ":" + PORT);
+            System.out.println("✅ Đang lắng nghe kết nối từ client...");
+
             while (true) {
-                new ClientHandler(serverSocket.accept()).start();
+                Socket socket = serverSocket.accept();
+                new ClientHandler(socket).start();
             }
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    // ✅ Gửi đến tất cả người trong cùng phòng chờ (Lobby)
-    static synchronized void broadcastLobby(String message, String excludeUser) {
-        for (ClientHandler ch : clients.values()) {
-            if ((ch.group == null || ch.group.equals("null") || ch.group.isEmpty()) && !ch.username.equals(excludeUser)) {
-                ch.send(message);
-            }
-        }
-    }
+    // 🔹 Lấy địa chỉ IPv4 Wi-Fi
+    private static String getLocalIPv4Address() {
+        try {
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface ni = interfaces.nextElement();
+                if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) continue;
+                if (!ni.getDisplayName().toLowerCase().contains("wi")) continue;
 
-    // ✅ Gửi đến tất cả trong group
-    static synchronized void sendToGroup(String group, String message, String excludeUser) {
-        Set<ClientHandler> members = groups.get(group);
-        if (members != null) {
-            for (ClientHandler ch : members) {
-                if (!ch.username.equals(excludeUser)) {
-                    ch.send(message);
-                }
-            }
-        }
-    }
-
-    // ✅ Gửi đến tất cả toàn server
-    static synchronized void broadcastAll(String message, String excludeUser) {
-        for (ClientHandler ch : clients.values()) {
-            if (!ch.username.equals(excludeUser)) {
-                ch.send(message);
-            }
-        }
-    }
-
-    static synchronized void updateUserList() {
-        for (ClientHandler ch : clients.values()) {
-            List<String> visibleUsers = new ArrayList<>();
-
-            if (ch.group == null || ch.group.equals("null") || ch.group.isEmpty()) {
-                // Người ở Lobby -> thấy ai cũng đang ở Lobby
-                for (ClientHandler c : clients.values()) {
-                    if (c != ch && (c.group == null || c.group.equals("null") || c.group.isEmpty())) {
-                        visibleUsers.add(c.username);
-                    }
-                }
-            } else {
-                // Người trong group -> chỉ thấy người cùng group
-                Set<ClientHandler> members = groups.get(ch.group);
-                if (members != null) {
-                    for (ClientHandler c : members) {
-                        if (c != ch) visibleUsers.add(c.username);
+                Enumeration<InetAddress> addresses = ni.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    InetAddress addr = addresses.nextElement();
+                    if (addr instanceof Inet4Address && !addr.isLoopbackAddress()) {
+                        return addr.getHostAddress();
                     }
                 }
             }
-
-            ch.send("USERS:" + String.join(",", visibleUsers));
+            return InetAddress.getLocalHost().getHostAddress();
+        } catch (Exception e) {
+            return null;
         }
     }
 
+    // 🔹 Gửi tin chung
+    static synchronized void broadcast(String message, String excludeUser) {
+        for (ClientHandler c : clients.values()) {
+            if (!c.username.equals(excludeUser)) {
+                c.sendMessage(message);
+            }
+        }
+    }
 
+    // 🔹 Gửi tin riêng
+    static synchronized void sendPrivate(String toUser, String message) {
+        ClientHandler c = clients.get(toUser);
+        if (c != null) c.sendMessage(message);
+    }
+
+    // 🔹 Gửi tin nhóm — chỉ các thành viên trong nhóm nhận được
+    static synchronized void sendGroup(String sender, String group, String message) {
+        Set<String> members = groups.get(group);
+
+        // Nếu nhóm chưa tồn tại hoặc rỗng
+        if (members == null || members.isEmpty()) {
+            ClientHandler c = clients.get(sender);
+            if (c != null)
+                c.sendMessage("⚠️ Nhóm '" + group + "' hiện chưa có thành viên nào.");
+            return;
+        }
+
+        // Gửi tin cho các thành viên trong nhóm
+        for (String user : members) {
+            ClientHandler c = clients.get(user);
+            if (c != null) {
+                c.sendMessage("👥 [" + sender + " gửi tới nhóm " + group + "]: " + message);
+            }
+        }
+
+        // Người gửi (dù không ở trong nhóm) vẫn thấy tin mình gửi
+        ClientHandler senderClient = clients.get(sender);
+        if (senderClient != null) {
+            senderClient.sendMessage("📨 [Bạn gửi tới nhóm " + group + "]: " + message);
+        }
+    }
+
+    static synchronized void joinGroup(String user, String group) {
+        groups.computeIfAbsent(group, g -> new HashSet<>()).add(user);
+    }
+
+    static synchronized void leaveGroup(String user, String group) {
+        if (groups.containsKey(group)) {
+            groups.get(group).remove(user);
+        }
+    }
+
+    static synchronized void removeUser(String username) {
+        clients.remove(username);
+        for (Set<String> s : groups.values()) s.remove(username);
+    }
+
+    static synchronized String getOnlineList() {
+        return String.join(",", clients.keySet());
+    }
+
+    // ==========================
+    // 🔹 Lớp xử lý từng Client
+    // ==========================
     static class ClientHandler extends Thread {
-        private final Socket socket;
+        private Socket socket;
         private PrintWriter out;
         private BufferedReader in;
-        private String username;
-        private String group;
-        private final String clientIP;
+        String username;
 
         ClientHandler(Socket socket) {
             this.socket = socket;
-            this.clientIP = socket.getInetAddress().getHostAddress();
         }
 
-        @Override
         public void run() {
             try {
                 in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                 out = new PrintWriter(socket.getOutputStream(), true);
 
                 username = in.readLine();
-                group = in.readLine();
-
                 if (username == null || username.isEmpty()) {
                     socket.close();
                     return;
                 }
 
                 clients.put(username, this);
-                broadcastLobby("🟢 " + username + " (" + clientIP + ") đã kết nối đến server.", username);
-
-                if (group != null && !group.equals("null") && !group.isEmpty()) {
-                    joinGroup(group);
-                } else {
-                    System.out.println("🟢 " + username + " vào phòng chờ (Lobby)");
-                    broadcastLobby("💬 " + username + " đã tham gia phòng chờ", username);
-                }
-
+                System.out.println("👤 " + username + " đã kết nối từ " + socket.getInetAddress());
+                broadcast("🔵 " + username + " đã tham gia!", username);
                 updateUserList();
 
                 String msg;
                 while ((msg = in.readLine()) != null) {
-                    // Lệnh đặc biệt
-                    if (msg.startsWith("net ")) {
-                        handleCommand(msg);
-                        continue;
-                    }
-
-                    // ✅ Chat bình thường
-                    if (group == null || group.isEmpty() || group.equals("null")) {
-                        broadcastLobby("[" + username + "@" + clientIP + "]: " + msg, username);
-                    } else {
-                        sendToGroup(group, "[" + username + "@" + clientIP + "]: " + msg, username);
-                    }
+                    handleMessage(msg);
                 }
-
             } catch (IOException e) {
-                System.out.println("🔴 " + username + " (" + clientIP + ") đã ngắt kết nối.");
+                System.out.println("⚠️ " + username + " ngắt kết nối.");
             } finally {
-                disconnectClient();
-            }
-        }
-
-        // ✅ Xử lý lệnh net send / net join / net leave
-        private void handleCommand(String cmd) {
-            String[] parts = cmd.split(" ", 4);
-
-            if (parts.length >= 2 && parts[1].equalsIgnoreCase("join")) {
-                if (parts.length < 3) {
-                    send("⚠️ Dùng: net join <group>");
-                    return;
-                }
-                joinGroup(parts[2]);
-                return;
-            }
-
-            if (parts.length >= 2 && parts[1].equalsIgnoreCase("leave")) {
-                leaveGroup();
-                return;
-            }
-
-            if (parts.length < 4 || !parts[1].equalsIgnoreCase("send")) {
-                send("⚠️ Sai cú pháp. Dùng: net send {IP|group|*} message");
-                return;
-            }
-
-            String target = parts[2];
-            String message = parts[3];
-
-            if (target.equals("*")) {
-                broadcastAll("[GLOBAL][" + username + "@" + clientIP + "]: " + message, username);
-            } else if (groups.containsKey(target)) {
-                sendToGroup(target, "[GROUP][" + username + "@" + clientIP + "]: " + message, username);
-            } else {
-                // Gửi riêng theo IP
-                for (ClientHandler ch : clients.values()) {
-                    if (ch.clientIP.equals(target)) {
-                        ch.send("[PRIVATE][" + username + "@" + clientIP + "]: " + message);
-                        send("📤 Đã gửi riêng đến " + target);
-                        return;
-                    }
-                }
-                send("⚠️ Không tìm thấy người nhận: " + target);
-            }
-        }
-
-        private void joinGroup(String newGroup) {
-            // Rời group cũ nếu có
-            if (group != null && groups.containsKey(group)) {
-                groups.get(group).remove(this);
-                sendToGroup(group, "❌ " + username + " đã rời nhóm " + group, username);
-            }
-
-            group = newGroup;
-            groups.computeIfAbsent(group, g -> ConcurrentHashMap.newKeySet()).add(this);
-            sendToGroup(group, "💬 " + username + " đã tham gia nhóm " + group, username);
-            System.out.println("🟢 " + username + " vào nhóm " + group);
-        }
-
-        private void leaveGroup() {
-            if (group != null && groups.containsKey(group)) {
-                groups.get(group).remove(this);
-                sendToGroup(group, "🚪 " + username + " đã rời nhóm " + group, username);
-                broadcastLobby("💬 " + username + " quay lại phòng chờ", username);
-            }
-            group = null;
-            send("🔙 Bạn đã quay lại phòng chờ (Lobby)");
-        }
-
-        private void disconnectClient() {
-            try {
-                clients.remove(username);
-                if (group != null && groups.containsKey(group)) {
-                    groups.get(group).remove(this);
-                    sendToGroup(group, "❌ " + username + " rời nhóm " + group, username);
-                } else {
-                    broadcastLobby("❌ " + username + " rời phòng chờ.", username);
-                }
+                removeUser(username);
+                broadcast("🔴 " + username + " đã rời phòng.", username);
                 updateUserList();
-                socket.close();
-            } catch (IOException ignored) {}
+                try { socket.close(); } catch (IOException ignored) {}
+            }
         }
 
-        void send(String msg) {
-            if (out != null) out.println(msg);
+        private void handleMessage(String msg) {
+            try {
+                String[] parts = msg.split("\\|", 3);
+                String mode = parts[0];
+                String target = parts[1];
+                String text = parts.length > 2 ? parts[2] : "";
+
+                switch (mode) {
+                    case "ALL" -> broadcast("💬 [" + username + "]: " + text, username);
+                    case "PRIVATE" -> sendPrivate(target, "💌 [Từ " + username + "]: " + text);
+                    case "GROUP" -> sendGroup(username, target, text);
+                    case "JOIN" -> {
+                        joinGroup(username, target);
+                        sendMessage("📢 Bạn đã tham gia nhóm: " + target);
+                    }
+                    case "LEAVE" -> {
+                        leaveGroup(username, target);
+                        sendMessage("📢 Bạn đã rời nhóm: " + target);
+                    }
+                    default -> sendMessage("⚠️ Lệnh không hợp lệ: " + mode);
+                }
+            } catch (Exception e) {
+                sendMessage("⚠️ Lỗi định dạng tin nhắn: " + msg);
+            }
+        }
+
+        private void updateUserList() {
+            String userList = "USERS|" + getOnlineList();
+            for (ClientHandler c : clients.values()) {
+                c.sendMessage(userList);
+            }
+        }
+
+        void sendMessage(String msg) {
+            out.println(msg);
         }
     }
 }
