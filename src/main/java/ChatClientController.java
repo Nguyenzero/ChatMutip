@@ -103,13 +103,19 @@ public class ChatClientController {
                 txtChatArea.appendText("⚠️ Chưa chọn nhóm!\n");
                 return;
             }
+        } else if (rdoChatAll.isSelected()) {
+            // 🔹 Gửi tin cho toàn server
+            mode = "ALL";
+            msg = "[GLOBAL] " + msg; // ⚡ thêm tiền tố để server hiểu là toàn server
         } else {
+            // Nếu không chọn gì -> Chat theo nhóm như cũ
             mode = "ALL";
         }
 
         client.send(mode, target, msg);
         txtMessage.clear();
     }
+
 
     // 🔹 Tham gia nhóm
     @FXML

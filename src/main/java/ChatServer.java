@@ -52,48 +52,78 @@ public class ChatServer {
         }
     }
 
-    // 🔹 Gửi tin chung
-    static synchronized void broadcast(String message, String excludeUser) {
+    // =======================================================
+    // 🔸 1A. Gửi tin chung — chỉ người cùng phạm vi hoặc cùng nhóm
+    // =======================================================
+    static synchronized void broadcast(String message, String sender) {
+        String senderGroup = getUserGroup(sender);
+
         for (ClientHandler c : clients.values()) {
-            if (!c.username.equals(excludeUser)) {
+            if (senderGroup == null) {
+                if (getUserGroup(c.username) == null && !c.username.equals(sender)) {
+                    c.sendMessage(message);
+                }
+            } else {
+                if (senderGroup.equals(getUserGroup(c.username)) && !c.username.equals(sender)) {
+                    c.sendMessage(message);
+                }
+            }
+        }
+    }
+
+    // =======================================================
+    // 🔸 1B. Gửi tin toàn server — ai cũng nhận
+    // =======================================================
+    static synchronized void broadcastAll(String message, String sender) {
+        for (ClientHandler c : clients.values()) {
+            if (!c.username.equals(sender)) {
                 c.sendMessage(message);
             }
         }
     }
 
-    // 🔹 Gửi tin riêng
+    // =======================================================
+    // 🔸 2. Gửi tin riêng
+    // =======================================================
     static synchronized void sendPrivate(String toUser, String message) {
         ClientHandler c = clients.get(toUser);
         if (c != null) c.sendMessage(message);
     }
 
-    // 🔹 Gửi tin nhóm — chỉ các thành viên trong nhóm nhận được
+    // =======================================================
+    // 🔸 3. Gửi tin nhóm
+    // =======================================================
     static synchronized void sendGroup(String sender, String group, String message) {
         Set<String> members = groups.get(group);
 
-        // Nếu nhóm chưa tồn tại hoặc rỗng
         if (members == null || members.isEmpty()) {
             ClientHandler c = clients.get(sender);
             if (c != null)
-                c.sendMessage("⚠️ Nhóm '" + group + "' hiện chưa có thành viên nào.");
+                c.sendMessage("⚠️ Nhóm '" + group + "' chưa có thành viên nào.");
             return;
         }
 
-        // Gửi tin cho các thành viên trong nhóm
+        if (!members.contains(sender)) {
+            ClientHandler c = clients.get(sender);
+            if (c != null)
+                c.sendMessage("🚫 Bạn không thuộc nhóm '" + group + "', không thể gửi tin nhắn.");
+            return;
+        }
+
         for (String user : members) {
             ClientHandler c = clients.get(user);
             if (c != null) {
-                c.sendMessage("👥 [" + sender + " gửi tới nhóm " + group + "]: " + message);
+                if (user.equals(sender))
+                    c.sendMessage("📨 [Bạn -> Nhóm " + group + "]: " + message);
+                else
+                    c.sendMessage("👥 [" + sender + " -> Nhóm " + group + "]: " + message);
             }
-        }
-
-        // Người gửi (dù không ở trong nhóm) vẫn thấy tin mình gửi
-        ClientHandler senderClient = clients.get(sender);
-        if (senderClient != null) {
-            senderClient.sendMessage("📨 [Bạn gửi tới nhóm " + group + "]: " + message);
         }
     }
 
+    // =======================================================
+    // 🔸 4. Quản lý nhóm
+    // =======================================================
     static synchronized void joinGroup(String user, String group) {
         groups.computeIfAbsent(group, g -> new HashSet<>()).add(user);
     }
@@ -113,9 +143,17 @@ public class ChatServer {
         return String.join(",", clients.keySet());
     }
 
-    // ==========================
-    // 🔹 Lớp xử lý từng Client
-    // ==========================
+    static synchronized String getUserGroup(String username) {
+        for (Map.Entry<String, Set<String>> entry : groups.entrySet()) {
+            if (entry.getValue().contains(username))
+                return entry.getKey();
+        }
+        return null;
+    }
+
+    // =======================================================
+    // 🔸 5. Lớp xử lý client
+    // =======================================================
     static class ClientHandler extends Thread {
         private Socket socket;
         private PrintWriter out;
@@ -164,7 +202,15 @@ public class ChatServer {
                 String text = parts.length > 2 ? parts[2] : "";
 
                 switch (mode) {
-                    case "ALL" -> broadcast("💬 [" + username + "]: " + text, username);
+                    case "ALL" -> {
+                        // Nếu có tiền tố [GLOBAL] thì gửi toàn server
+                        if (text.startsWith("[GLOBAL]")) {
+                            String cleanMsg = text.substring(8).trim();
+                            broadcastAll("🌍 [Toàn Server] [" + username + "]: " + cleanMsg, username);
+                        } else {
+                            broadcast("💬 [" + username + "]: " + text, username);
+                        }
+                    }
                     case "PRIVATE" -> sendPrivate(target, "💌 [Từ " + username + "]: " + text);
                     case "GROUP" -> sendGroup(username, target, text);
                     case "JOIN" -> {
