@@ -59,14 +59,16 @@ public class ChatServer {
         String senderGroup = getUserGroup(sender);
 
         for (ClientHandler c : clients.values()) {
-            if (senderGroup == null) {
-                if (getUserGroup(c.username) == null && !c.username.equals(sender)) {
-                    c.sendMessage(message);
-                }
-            } else {
-                if (senderGroup.equals(getUserGroup(c.username)) && !c.username.equals(sender)) {
-                    c.sendMessage(message);
-                }
+            if (c.username.equals(sender)) continue;
+            String targetGroup = getUserGroup(c.username);
+
+            // Người ngoài nhóm chỉ thấy người ngoài nhóm
+            if (senderGroup == null && targetGroup == null) {
+                c.sendMessage(message);
+            }
+            // Người trong nhóm chỉ thấy người cùng nhóm
+            else if (senderGroup != null && senderGroup.equals(targetGroup)) {
+                c.sendMessage(message);
             }
         }
     }
@@ -91,7 +93,8 @@ public class ChatServer {
     }
 
     // =======================================================
-    // 🔸 3. Gửi tin nhóm
+    // 🔸 3. Gửi tin nhóm — gửi tới mọi người trong nhóm được chọn
+    //     (dù người gửi có ở trong nhóm hay không)
     // =======================================================
     static synchronized void sendGroup(String sender, String group, String message) {
         Set<String> members = groups.get(group);
@@ -103,13 +106,7 @@ public class ChatServer {
             return;
         }
 
-        if (!members.contains(sender)) {
-            ClientHandler c = clients.get(sender);
-            if (c != null)
-                c.sendMessage("🚫 Bạn không thuộc nhóm '" + group + "', không thể gửi tin nhắn.");
-            return;
-        }
-
+        // ⚡ Không còn chặn người ngoài nhóm gửi tin nữa!
         for (String user : members) {
             ClientHandler c = clients.get(user);
             if (c != null) {
