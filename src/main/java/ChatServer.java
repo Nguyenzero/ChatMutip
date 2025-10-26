@@ -59,16 +59,21 @@ public class ChatServer {
         String senderGroup = getUserGroup(sender);
 
         for (ClientHandler c : clients.values()) {
-            if (c.username.equals(sender)) continue;
             String targetGroup = getUserGroup(c.username);
 
             // Người ngoài nhóm chỉ thấy người ngoài nhóm
             if (senderGroup == null && targetGroup == null) {
-                c.sendMessage(message);
+                if (c.username.equals(sender))
+                    c.sendMessage("📨 [Bạn]: " + message);
+                else
+                    c.sendMessage(message);
             }
             // Người trong nhóm chỉ thấy người cùng nhóm
             else if (senderGroup != null && senderGroup.equals(targetGroup)) {
-                c.sendMessage(message);
+                if (c.username.equals(sender))
+                    c.sendMessage("📨 [Bạn]: " + message);
+                else
+                    c.sendMessage(message);
             }
         }
     }
@@ -78,18 +83,25 @@ public class ChatServer {
     // =======================================================
     static synchronized void broadcastAll(String message, String sender) {
         for (ClientHandler c : clients.values()) {
-            if (!c.username.equals(sender)) {
+            if (c.username.equals(sender))
+                c.sendMessage("📨 [Bạn]: " + message);
+            else
                 c.sendMessage(message);
-            }
         }
     }
 
     // =======================================================
-    // 🔸 2. Gửi tin riêng
+    // 🔸 2. Gửi tin riêng — người gửi cũng thấy mình gửi gì
     // =======================================================
-    static synchronized void sendPrivate(String toUser, String message) {
-        ClientHandler c = clients.get(toUser);
-        if (c != null) c.sendMessage(message);
+    static synchronized void sendPrivate(String sender, String toUser, String message) {
+        ClientHandler receiver = clients.get(toUser);
+        if (receiver != null)
+            receiver.sendMessage("💌 [Từ " + sender + "]: " + message);
+
+        // Gửi lại cho người gửi
+        ClientHandler senderClient = clients.get(sender);
+        if (senderClient != null)
+            senderClient.sendMessage("📨 [Bạn -> " + toUser + "]: " + message);
     }
 
     // =======================================================
@@ -106,7 +118,6 @@ public class ChatServer {
             return;
         }
 
-        // ⚡ Không còn chặn người ngoài nhóm gửi tin nữa!
         for (String user : members) {
             ClientHandler c = clients.get(user);
             if (c != null) {
@@ -208,7 +219,7 @@ public class ChatServer {
                             broadcast("💬 [" + username + "]: " + text, username);
                         }
                     }
-                    case "PRIVATE" -> sendPrivate(target, "💌 [Từ " + username + "]: " + text);
+                    case "PRIVATE" -> sendPrivate(username, target, text);
                     case "GROUP" -> sendGroup(username, target, text);
                     case "JOIN" -> {
                         joinGroup(username, target);
